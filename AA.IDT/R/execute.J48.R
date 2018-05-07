@@ -55,3 +55,34 @@ execute.J48 = function (Sequence.Vector,
     ValidationAccuracy = Accuracy.Validation.Vector
   )
 }
+
+# # Cargo los datasets
+# setwd(
+#   'C:/Users/rodri/Google Drive/UBA/Exploración de Datos/Aprendizaje Automático/AA-TP1-Fernandez_Piotti_Rodriguez/Datasets/TelcoChurn'
+# )
+#
+# TelcoChurn.Trainning <- read.csv('TelcoChurn-Trainning.csv')
+# TelcoChurn.Validation <- read.csv('TelcoChurn-Validation.csv')
+#
+# # ---------------------------------------------------- Según Confidence Factor
+# # genereta se sequence of confidence factor
+# ConfidenceFactor.Vector = seq(0.05, 0.5, by = 0.05)
+# # ejecuto las corridas en base al CF
+# results.cf = execute.J48(ConfidenceFactor.Vector,
+#                          0,
+#                          TelcoChurn.Trainning,
+#                          TelcoChurn.Validation)
+#
+# plot.treeSize(results.cf, "Confidence Factor", ConfidenceFactor.Vector)
+# plot.performance(results.cf, "Confidence Factor", ConfidenceFactor.Vector)
+#
+# # ---------------------------------------------------- Según MinNumObj
+# MinNumObj.Vector = seq(0.005, 0.1, by = 0.005)
+# # ejecuto las corridas en base al CF
+# results.mno = execute.J48(MinNumObj.Vector,
+#                           0.3,
+#                           TelcoChurn.Trainning,
+#                           TelcoChurn.Validation)
+#
+# plot.treeSize(results.mno, "MinNumObj (%)", MinNumObj.Vector)
+# plot.performance(results.mno, "MinNumObj (%)", MinNumObj.Vector)
