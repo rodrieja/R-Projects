@@ -27,7 +27,6 @@ discret <- function (dataset, columnas, estrategia, bins){
   return(dataset)
 }
 
-?discretize
 # ----------------------------------------------------
 #cargo el dataset completo, porque hay que discretizar antes de dividir en test-validacion
 TelcoChurn <- read.csv('Telcochurn.csv')
@@ -90,7 +89,7 @@ scale_x_continuous(breaks = data.igual.ancho$Bins) +
 labs(color="CF") +
 ggtitle("Cant Hojas | Bins = Igual Ancho") +
 theme(plot.title = element_text(hjust = 0.5))
-ggsave("tamaño_hojas_igual_ancho.png", dpi=400, height=6, width=12)
+ggsave("7.1.1- tamaño_hojas_igual_ancho.png", dpi=400, height=6, width=12)
 
 
 
@@ -100,7 +99,7 @@ ggplot(data = data.igual.freq, aes(x = Bins, y = NumberOfLeaves, colour = factor
   labs(color="CF") +
   ggtitle("Cant Hojas | Bins = Igual Frecuencia") +
   theme(plot.title = element_text(hjust = 0.5))
-ggsave("tamaño_hojas_igual_freq.png", dpi=400, height=6, width=12)
+ggsave("7.1.2- tamaño_hojas_igual_freq.png", dpi=400, height=6, width=12)
 
 # ------------------------------------------------- TAMAÑO NODOS -------------------------------------------------
 
@@ -111,7 +110,7 @@ ggplot(data = data.igual.ancho, aes(x = Bins, y = NumberOfNodes, colour = factor
   labs(color="CF") +
   ggtitle("Cant Nodos | Bins = Igual Ancho") +
   theme(plot.title = element_text(hjust = 0.5))
-ggsave("tamaño_nodos_igual_ancho.png", dpi=400, height=6, width=12)
+ggsave("7.1.3- tamaño_nodos_igual_ancho.png", dpi=400, height=6, width=12)
 
 
 
@@ -121,7 +120,7 @@ ggplot(data = data.igual.freq, aes(x = Bins, y = NumberOfNodes, colour = factor(
   labs(color="CF") +
   ggtitle("Cant Nodos | Bins = Igual Frecuencia") +
   theme(plot.title = element_text(hjust = 0.5))
-ggsave("tamaño_nodos_igual_freq.png", dpi=400, height=6, width=12)
+ggsave("7.1.4- tamaño_nodos_igual_freq.png", dpi=400, height=6, width=12)
 
 
 # ------------------------------------------------- VALIDATION -------------------------------------------------
@@ -131,8 +130,9 @@ ggplot(data = data.igual.ancho, aes(x = Bins, y = ValidationAccuracy, colour = f
   geom_line(size = 1) + geom_point(shape = 16, size = 1.5) +
   scale_x_continuous(breaks = data.igual.ancho$Bins) +
   ggtitle("Acc Validation | Bins = Igual Ancho") +
+  labs(color="CF") +
   theme(plot.title = element_text(hjust = 0.5))
-ggsave("accuracy_validacion_igual_ancho.png", dpi=400, height=6, width=12)
+ggsave("7.2.1- accuracy_validacion_igual_ancho.png", dpi=400, height=6, width=12)
 
 
 
@@ -142,7 +142,7 @@ ggplot(data = data.igual.freq, aes(x = Bins, y = ValidationAccuracy, colour = fa
   labs(color="CF") +
   ggtitle("Acc Validation | Bins = Igual Frecuencia") +
   theme(plot.title = element_text(hjust = 0.5))
-ggsave("accuracy_validacion_igual_freq.png", dpi=400, height=6, width=12)
+ggsave("7.2.2- accuracy_validacion_igual_freq.png", dpi=400, height=6, width=12)
 
 # ------------------------------------------------- ACCURACY TRAIN vs VALID -------------------------------------------------
 ggplot(data = data.igual.ancho) + geom_point(size = 2, alpha=0.7, aes(x = Bins, y = TrainningAccuracy, colour = "Entrenamiento")) +
@@ -163,13 +163,6 @@ ggsave("accuracy_train_vs_validacion_igual_freq.png", dpi=400, height=6, width=1
 
 
 # ------------------------------------------------- ACCURACY supervisado VS no supervisado  -------------------------------------------------
-ggplot(data = data.igual.ancho, aes(x = Bins, y = ValidationAccuracy, colour = factor(ConfidenceFactor))) +
-  geom_line(size = 1) + geom_point(shape = 16, size = 1.5) +
-  scale_x_continuous(breaks = data.igual.ancho$Bins) +
-  ggtitle("Acc Validation | Bins = Igual Ancho") +
-  theme(plot.title = element_text(hjust = 0.5))
-ggsave("accuracy_validacion_igual_ancho.png", dpi=400, height=6, width=12)
-
 #busco los mejores Bins de cada tipo (supervisado es el unico que hay)
 best.bins.igual.ancho <- data.igual.ancho[data.igual.freq$ValidationAccuracy == max(data.igual.ancho$ValidationAccuracy),"Bins"]        
 best.bins.igual.freq <- data.igual.freq[data.igual.freq$ValidationAccuracy == max(data.igual.freq$ValidationAccuracy),"Bins"]        
@@ -189,4 +182,4 @@ geom_line(size = 1) + geom_point(shape = 16, size = 1.5) +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(color="Método") 
   
-ggsave("accuracy_validacion_comparacion_metodos.png", dpi=400, height=6, width=12)
+ggsave("7.3- accuracy_validacion_comparacion_metodos.png", dpi=400, height=6, width=12)
