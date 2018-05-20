@@ -8,5 +8,5 @@ Description: Procesamiento y visualización de un set de datos procesado con Rwe
 License: GLP
 Encoding: UTF-8
 LazyData: true
-Imports: partykit, RWeka, ggplot2
+Imports: partykit, RWeka, ggplot2, gridExtra, arules
   
