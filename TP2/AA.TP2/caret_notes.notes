@@ -1,0 +1,176 @@
+---=== R caret pkg ===---
+useful models
+	C4.5-like Trees (method = 'J48')
+		* Confidence Threshold (C, numeric)
+		* Minimum Instances Per Leaf (M, numeric)
+	k-Nearest Neighbors (method = 'knn')
+		* Number of Neighbors (k, numeric)
+	Naive Bayes (method = 'naive_bayes')
+		* Laplace Correction (laplace, numeric)
+		* Distribution Type (usekernel, logical)
+		* Bandwidth Adjustment (adjust, numeric)
+	Multi-Layer Perceptron (method = 'mlp')
+		* Number of Hidden Units (size, numeric)
+
+questions
+	resampling 
+	bootstrap
+	confusion matrix: 	* recall
+						* precision 
+	cross validation	
+	roc para multi class? o hay que usar accuracy?
+
+
+=== flow de caret para cada modelo
+	0- 
+	1- definir un grid con parametros a probar 
+		[r]
+			paramGrid <-  expand.grid(C = c(2, 4, 6, 8, 10), M = c(1, 2, 3))
+		[\r]
+	1- definir un trainControl
+		[r]
+			fitControl <- trainControl(method = 'repeatedcv',                   # k-fold cross validation
+			                           number = 5,                      # number of folds
+			                           savePredictions = 'final',       # saves predictions for optimal tuning parameter
+			                           classProbs = T,                  # should class probabilities be returned
+			                           #summaryFunction=twoClassSummary  # results summary function
+			                           index = createFolds(trainData$Class, 5), # importante setear los indices que coincidan con el CV
+			                           repeats = 10
+			                           )
+		[\r]
+		repeatedcv hace k fold corss validation pero multiples veces, haciendo average de los resultados
+	2- train 
+		[r]
+			model = train(Class ~ ., data=trainData, method='J48', metric='ROC', tuneGrid = paramGrid, trControl = fitControl)
+		[\r]
+	3- test
+		[r]
+			predictions <- predict(model, newdata = testData)
+		[\r]
+
+
+=== flow de caret para ensambles
+	1- preProcess
+	2- armar un objeto trainControl, que tiene la forma de sampleo que va a usar cada modelo del ensemble
+		[r]
+			fitControl <- trainControl(method = 'cv',                   # k-fold cross validation
+			                           number = 5,                      # number of folds
+			                           savePredictions = 'final',       # saves predictions for optimal tuning parameter
+			                           classProbs = T,                  # should class probabilities be returned
+			                           #summaryFunction=twoClassSummary  # results summary function
+			                           index = createFolds(trainData$Class, 5) # importante setear los indices que coincidan con el CV
+			                           )
+		[/r]
+
+	3- 	armar un objeto caretList, que tiene los modelos y los parametros para tunear
+		va  usar el metodo de sampleo que se indica en fitControl
+		[r]
+			model_list_big <- caretList(
+			  Class~., data=trainData,
+			  trControl=fitControl,
+			  tuneList=list(
+			    j48=caretModelSpec(method="J48", tuneGrid=data.frame(expand.grid(C = c(0.1, 0.2), M = c(2,3,10,20,30)))), # el expand.grid hace cross joins entre los parametros
+			    kn=caretModelSpec(method="knn", tuneGrid=data.frame(k=c(3,4,5,6,8,9,10)))
+			  )
+			)
+		# en este ejemplo se crean un modelo de arbol J48 con distintos valores para C y M
+		# y un modelo knn con distintos valores de k
+		[\r]
+	4- evaluar cada modelo final contra un dataset de testing
+	[r]
+		predictions <- predict(model_list_big$j48, newdata = testData) # para el modelo de knn seria   model_list_big$knn
+		confusionMatrix(predictions, testData$Class)
+	[\r]
+
+	5- ensamblar, va a buscar una regresion de lineal con los modelos
+		[r]
+			ensemble <- caretEnsemble(
+			  model_list_big, 
+			  metric="ROC",
+			  trControl=trainControl(
+			    summaryFunction=twoClassSummary,
+			    classProbs=TRUE
+			  ))
+			summary(ensemble)
+		[\r]
+
+
+
+-----------------------------------------------------------
+    Data Preparation
+-----------------------------------------------------------
+===---------------------------------------------------------------------------------------------------
+useful things
+	# get proportions of balance within classes (si es menor que 2% esta desbalanceada)
+		[r] 
+			prop.table(table(vehicles$cylinders))
+		[/r]
+===---------------------------------------------------------------------------------------------------
+createDataPartition # crea las particiones training/test pero manteniendo el balance entre clases
+===---------------------------------------------------------------------------------------------------
+	[r]
+		# Step 1: Get row numbers for the training data
+		trainRowNumbers <- createDataPartition(orange$Purchase, p=0.7, list=FALSE)
+
+		# Step 2: Create the training  dataset
+		trainData <- orange[trainRowNumbers,]
+
+		# Step 3: Get the remaining rows (going to be splitted in 2)
+		remainingData <- orange[-trainRowNumbers,]
+
+		# Step 4: Create the test and validation datasets
+		testRowNumbers <- createDataPartition(remainingData$Purchase, p=0.5, list=FALSE)
+
+		testData <- remainingData[testRowNumbers,]
+		validationData <- remainingData[-testRowNumbers,]
+
+		# ahi nos quedaron 3 datasets, training/test/validacion con el 70%, 15% y 15% respectivamente
+		# y manteniendo la relacion de clases en los 3 datasets
+	[\r]
+===---------------------------------------------------------------------------------------------------
+skimr #muestra estadisticas descriptivas del dataset
+===---------------------------------------------------------------------------------------------------
+	[r]
+		library(skimr)
+		skimmed <- skim_to_wide(trainData)
+		skimmed[, c(1:5, 9:11, 13, 15:16)]
+	[\r]
+===---------------------------------------------------------------------------------------------------
+NA imputation #se usa k nearest neighborgs para imputar los datos faltantes
+===---------------------------------------------------------------------------------------------------
+	[r]
+		# Create the knn imputation model on the training data
+		preProcess_missingdata_model <- preProcess(trainData, method='knnImpute')
+		preProcess_missingdata_model
+
+		# Use the imputation model to predict the values of missing data points
+		library(RANN)  # required for knnInpute
+		trainData <- predict(preProcess_missingdata_model, newdata = trainData)
+		anyNA(trainData)
+	[\r]
+===---------------------------------------------------------------------------------------------------
+One-Hot Encoding # el objeto dummies_model se va a usar para agregar los dummys a test y validation
+===---------------------------------------------------------------------------------------------------
+	[r]
+		# One-Hot Encoding
+		# Creating dummy variables is converting a categorical variable to as many binary variables as here are categories.
+		dummies_model <- dummyVars(Purchase ~ ., data=trainData)
+
+		# Create the dummy variables using predict. The Y variable (Purchase) will not be present in trainData_mat.
+		trainData_mat <- predict(dummies_model, newdata = trainData)
+
+		# Convert to dataframe
+		trainData <- data.frame(trainData_mat)
+
+		# See the structure of the new dataset
+		str(trainData)
+
+	[\r]
+===---------------------------------------------------------------------------------------------------
+confusion matrix
+===---------------------------------------------------------------------------------------------------
+	[r]
+		# Compute the confusion matrix
+		confusionMatrix(reference = testData$Purchase, data = predicted, mode='everything', positive='MM')
+	[\r]
+
