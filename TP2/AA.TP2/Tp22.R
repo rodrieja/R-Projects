@@ -165,7 +165,7 @@ set.seed(2018)
     gender~., trainData,
     trControl=fitControl,
     #methodList=list( "xgbLinear", "xgbTree", "lda", "LogitBoost", "regLogistic"),
-    methodList=list( "lda", "LogitBoost", "J48", "rf", "C5.0Tree","gbm"),
+    methodList=list( "lda", "LogitBoost", "rf", "C5.0Tree","gbm"),
     tuneLength=10,
     tuneList=list(
       J48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid))
