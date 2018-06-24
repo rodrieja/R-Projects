@@ -1,48 +1,24 @@
-
+library(quanteda)
 library(readxl)
 library(skimr)
 library(caret)
-#library(RANN)
-#library(plyr)
-#library(caretEnsemble)
-
+library(caretEnsemble)
+library(pROC)
 
 set.seed(2018)
 # tipos de  columnas para importar
-types <- c("numeric", "text", "text", "numeric",	"date",	"text",	"numeric",	"text",
-           "numeric",	"date",	"text",	"numeric",	"text",	"text",	"text",	"text",	"text",
-           "numeric",	"text",	"text",	"text",	"numeric",	"date",	"text",	"text",	"text"
-)
-gender <-read_excel("gender.xlsx", col_types=types)
+  types <- c("numeric", "text", "text", "numeric",	"date",	"text",	"numeric",	"text",
+             "numeric",	"date",	"text",	"numeric",	"text",	"text",	"text",	"text",	"text",
+             "numeric",	"text",	"text",	"text",	"numeric",	"date",	"text",	"text",	"text"
+  )
+  gender <-read_excel("gender.xlsx", col_types=types)
 
 #listas de nombres por genero
-male.names <- read.csv("male.txt", sep="\n")
-female.names <- read.csv("female.txt", sep="\n")
+  male.names <- read.csv("male.txt", sep="\n")
+  female.names <- read.csv("female.txt", sep="\n")
 
 # eliminar los que tienen gender:confidence  < 1
   gender.cleaned <- gender[-which(gender$"gender:confidence" <1),]
-
-#variables
-# "gender" # CLASE ver que hacer con unknowns y blanks                
-# "description" # yo lo cambiaria a un booleano de si existe o no descripcion o sino hacer TM aca tambien        
-# "fav_number"          
-# "link_color"          
-# "name"                 
-# "retweet_count"    
-# "sidebar_color" 
-# "text"                 
-# "tweet_coord"   #cambiar a booleano si tiene coordenadas o no
-# "tweet_count"    
-
-# variables que no aportan
-# "created"    # sacar, es la fecah de creacion del perfil
-# "gender_gold"   #sacar      
-# "profile_yn_gold" #sacar   
-# "tweet_created"  # no aporta sacar
-# "tweet_id"      #el id del tweet no aporta datos  
-# "tweet_location" # no aporta sacar        
-# "user_timezone" # no aporta sacar
-# "profileimage"
 
 #remover las columnas que no aportan
   
@@ -57,14 +33,46 @@ female.names <- read.csv("female.txt", sep="\n")
 ############## DATA PREPARATION ################
 ################################################
   
+
+  
+  
 #variables has_male_name y has_female_name
   dataset$has_male_name <- ifelse(apply(dataset[,"name"], 1, function(u) any(pmatch( unlist(male.names), u), na.rm=TRUE) ), 1, 0)
   dataset$has_female_name <- ifelse(apply(dataset[,"name"], 1, function(u) any(pmatch( unlist(female.names), u), na.rm=TRUE) ), 1, 0)
   
   dataset.cleaned <- dataset
   
+  # armo la matrix df idf
+  
+  tokens <- tokens(	dataset.cleaned$text, what = "word",
+                          remove_numbers = T, remove_punct = T,
+                          remove_symbols = TRUE, remove_hyphens = T)
+  tokens <- tokens_tolower(tokens)
+  tokens <- tokens_select(	tokens, stopwords(),
+                                 selection = "remove")
+  
+  tokens <- tokens_wordstem(tokens, language = "english")
+  
+  dfm <- dfm(tokens)
+  #remove sparse terms
+  dfm <- dfm_trim(dfm, min_termfreq = 10, min_docfreq = 50)
+  
+  #transforamr la matriz con TF - IDF
+  dfm.tf.idf <- dfm_tfidf(dfm, scheme_tf = "prop") %>% round(digits = 2)
+  df <- convert(dfm.tf.idf, to = "data.frame")
+  
+  #si hay casos que quedaron vacios, rellenar columnas con 0
+  inc.cases.ix <- which(!complete.cases(df))
+  df[inc.cases.ix, ] <- rep(0.0, ncol(df))
+  #si quedaron nombres invalidos en R, fixearlos
+  names(df) <- make.names(names(df))
+  
+  df <- subset(df, select = -c(document))
+  
 # remover temporalmente los fields donde vamos a hacer text mining
   dataset.cleaned <- subset(dataset.cleaned, select = -c(name, description, text))
+  dataset.cleaned <- cbind.data.frame(dataset.cleaned, df)
+  
 # convert hex colors to in
   dataset.cleaned$link_color <- strtoi(dataset.cleaned$link_color, 16L)
   dataset.cleaned$sidebar_color <- strtoi(dataset.cleaned$sidebar_color, 16L)
@@ -108,7 +116,7 @@ female.names <- read.csv("female.txt", sep="\n")
   
 # Split en 500 de competencia
   ix.competencia <- sample(nrow(dataset.cleaned), 500)
-  competencia <- dataset.cleaned[ix.competencia,]
+  compData <- dataset.cleaned[ix.competencia,]
   
   # las saco del dataset
   dataset.cleaned <- dataset.cleaned[-ix.competencia, ]
@@ -117,7 +125,7 @@ female.names <- read.csv("female.txt", sep="\n")
 # separo training y test manteniendo la relacion entre clases
   
   # Step 1: Get row numbers for the training data
-  trainRowNumbers <- createDataPartition(dataset.cleaned$gender, p=0.8, list=FALSE)
+  trainRowNumbers <- createDataPartition(dataset.cleaned$gender, p=0.9, list=FALSE)
   
   # Step 2: Create the training  dataset
   trainData <- dataset.cleaned[trainRowNumbers,]
@@ -129,78 +137,87 @@ female.names <- read.csv("female.txt", sep="\n")
   prop.table(table(trainData$gender))
   prop.table(table(testData$gender))
   
-
+  
  ################################################
  ################## MODELOS #####################
  ################################################
   
  # objeto de control de training
   fitControl <- trainControl(method = 'cv',                   # k-fold cross validation
-                             number = 5,                      # number of folds
+                             number = 10,                      # number of folds
                              savePredictions = 'final',       # saves predictions for optimal tuning parameter
                              classProbs = T,                  # should class probabilities be returned
                              #summaryFunction=twoClassSummary  # results summary function
                              verboseIter = T,
-                             trim=F,
-                             returnData = T,
+                             trim=T,
+                             returnData = F,
                              allowParallel =T,
-                             index = createFolds(trainData$gender, 5) # importante setear los indices que coincidan con el CV
+                             index = createFolds(trainData$gender, 10)
   )
 
 # especifico los modelos y los parametros a tunear
 
   
-  J48_params_grid <- expand.grid(C = seq(0.05, 0.50, 0.05), M = seq(2, 4, 2))
-  knn_params_grid <- expand.grid(k= seq(1, 10, 1))
-  nb_params_grid <- expand.grid(fL=c(0.1,0.5,1.0), usekernel = c(TRUE, FALSE), adjust=c(0.1,0.5,1.0))
+  J48_params_grid <- expand.grid(C = seq(0.05, 0.30, 0.05), M = seq(2, 10, 2))
+
   
   model_list_big <- caretList(
     gender~., trainData,
     trControl=fitControl,
-    methodList=list("cforest"),
+    preProc = c("center", "scale"),
+    methodList=list( "xgbLinear", "xgbTree", "lda", "LogitBoost", "regLogistic"),
     tuneList=list(
-      j48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid)),
-      #nb=caretModelSpec(method="nb", tuneGrid=data.frame(nb_params_grid)),
-      nb=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid)),
-      kn=caretModelSpec(method="knn", tuneGrid=data.frame(knn_params_grid))
+      J48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid))
+      #nb=caretModelSpec(method="naive_bayes", preProcess="conditionalX", tuneGrid=data.frame(nb_params_grid)),
+      #kn=caretModelSpec(method="knn", tuneGrid=data.frame(knn_params_grid))
       )
   )
   
+  saveRDS(model_list_big, "./final_model2.rds")
   
-  #j48.probs <- predict(model_list_big$j48, trainData, type="prob")
-  #kn.probs <- predict(model_list_big$kn, trainData, type="prob")
+
   
 # pruebo los modelos en el dataset de TRAIN
-  train_pred_j48 <- predict(model_list_big$j48, trainData, type="prob")
-  train_pred_kn <- predict(model_list_big$kn, trainData, type="prob")
-  train_pred_nb <- predict(model_list_big$nb, trainData, type="prob")
-  
-  train_pred_forest <- predict(model_list_big$cforest, trainData, type="prob")
-  
+  train_pred.1 <- predict(model_list_big$xgbLinear, trainData, type="prob")
+  train_pred.2 <- predict(model_list_big$xgbTree, trainData, type="prob")
+  train_pred.3 <- predict(model_list_big$lda, trainData, type="prob")
+  train_pred.4 <- predict(model_list_big$J48, trainData, type="prob")
+  train_pred.5 <- predict(model_list_big$LogitBoost, trainData, type="prob")
+  train_pred.6 <- predict(model_list_big$regLogistic, trainData, type="prob")
+
   
   # para el ensameble, usamos promedio de las probabilidades de los modelos
-  train_avg_probs <- cbind.data.frame( brand = (train_pred_j48$brand + train_pred_kn$brand + train_pred_nb$brand + train_pred_forest$brand)/4,
-                                      female = (train_pred_j48$female + train_pred_kn$female + train_pred_nb$female + train_pred_forest$female)/4,
-                                      male = (train_pred_j48$male + train_pred_kn$male + train_pred_nb$male + train_pred_forest$male)/4,
-                                      target= trainData$gender )
+  train_avg_probs <- cbind.data.frame( brand = (train_pred.1$brand + train_pred.2$brand + train_pred.3$brand + train_pred.4$brand + train_pred.5$brand + train_pred.6$brand)/6,
+                                       female = (train_pred.1$female + train_pred.2$female + train_pred.3$female + train_pred.4$female + train_pred.5$female + train_pred.6$female)/6,
+                                       male = (train_pred.1$male + train_pred.2$male + train_pred.3$male + train_pred.4$male + train_pred.5$male + train_pred.6$male)/6,
+                                       target= trainData$gender )
+  
+  
+  #train_avg_probs <- cbind.data.frame( brand = (train_pred_j48$brand + train_pred_kn$brand + train_pred_nb$brand + train_pred_xgbTree$brand)/4,
+                                      #female = (train_pred_j48$female + train_pred_kn$female + train_pred_nb$female + train_pred_xgbTree$female)/4,
+                                      #male = (train_pred_j48$male + train_pred_kn$male + train_pred_nb$male + train_pred_xgbTree$male)/4,
+                                      #target= trainData$gender )
   
   #armo un data frame con las probabilidades medias y el target
   train_results <- cbind.data.frame(new_prediction=names(train_avg_probs)[max.col(train_avg_probs[,1:3])], trainData$gender)
   caret::confusionMatrix(reference = trainData$gender, data = train_results$new_prediction)
   
 # pruebo los modelos en el dataset de TEST
-  test_pred_j48 <- predict(model_list_big$j48, testData, type="prob")
-  test_pred_kn <- predict(model_list_big$kn, testData, type="prob")
-  test_pred_nb <- predict(model_list_big$nb, testData, type="prob")
-  
-  test_pred_svm <- predict(model_list_big$cforest, testData, type="prob")
-  
 
+  
+  test_pred.1 <- predict(model_list_big$xgbLinear, testData, type="prob")
+  test_pred.2 <- predict(model_list_big$xgbTree, testData, type="prob")
+  test_pred.3 <- predict(model_list_big$lda, testData, type="prob")
+  test_pred.4 <- predict(model_list_big$J48, testData, type="prob")
+  test_pred.5 <- predict(model_list_big$LogitBoost, testData, type="prob")
+  test_pred.6 <- predict(model_list_big$regLogistic, testData, type="prob")
+
+  
 # para el ensameble, usamos promedio de las probabilidades de los modelos
-  test_avg_probs <- cbind.data.frame( brand = (test_pred_j48$brand + test_pred_kn$brand + test_pred_nb$brand + test_pred_forest$brand)/4,
-                                 female = (test_pred_j48$female + test_pred_kn$female + test_pred_nb$female + test_pred_forest$female)/4,
-                                 male = (test_pred_j48$male + test_pred_kn$male + test_pred_nb$male + test_pred_forest$female)/4,
-                                 target= testData$gender )
+  test_avg_probs <- cbind.data.frame( brand = (test_pred.1$brand + test_pred.2$brand + test_pred.3$brand + test_pred.4$brand + test_pred.5$brand + test_pred.6$brand)/6,
+                                       female = (test_pred.1$female + test_pred.2$female + test_pred.3$female + test_pred.4$female + test_pred.5$female + test_pred.6$female)/6,
+                                       male = (test_pred.1$male + test_pred.2$male + test_pred.3$male + test_pred.4$male + test_pred.5$male + test_pred.6$male)/6,
+                                       target= testData$gender )
   
 #armo un data frame con las probabilidades medias y el target
   test_results <- cbind.data.frame(new_prediction=names(test_avg_probs)[max.col(test_avg_probs[,1:3])], testData$gender) # devuelve clases
@@ -231,4 +248,24 @@ female.names <- read.csv("female.txt", sep="\n")
   
   caret::confusionMatrix(reference = testData$gender, data = test_results$new_prediction)
 
+  
+  
+# pruebo los modelos en el dataset de COMPETICION
+
+  comp_pred.1 <- predict(model_list_big$xgbLinear, compData, type="prob")
+  comp_pred.2 <- predict(model_list_big$xgbTree, compData, type="prob")
+  comp_pred.3 <- predict(model_list_big$lda, compData, type="prob")
+  comp_pred.4 <- predict(model_list_big$J48, compData, type="prob")
+  comp_pred.5 <- predict(model_list_big$LogitBoost, compData, type="prob")
+  comp_pred.6 <- predict(model_list_big$regLogistic, compData, type="prob")
+  
+  
+  comp_avg_probs <- cbind.data.frame( brand = (comp_pred.1$brand + comp_pred.2$brand + comp_pred.3$brand + comp_pred.4$brand + comp_pred.5$brand + comp_pred.4$brand)/6,
+                                      female = (comp_pred.1$female + comp_pred.2$female + comp_pred.3$female + comp_pred.4$female + comp_pred.5$female + comp_pred.4$female)/6,
+                                      male = (comp_pred.1$male + comp_pred.2$male + comp_pred.3$male + comp_pred.4$male + comp_pred.5$male + comp_pred.4$male)/6,
+                                      target= compData$gender )
+  comp_results <- cbind.data.frame(new_prediction=names(comp_avg_probs)[max.col(comp_avg_probs[,1:3])], compData$gender) # devuelve clases
+  
+  #RESULTADO FINAL COMPETICION 
+  caret::confusionMatrix(reference = compData$gender, data = comp_results$new_prediction)
   
