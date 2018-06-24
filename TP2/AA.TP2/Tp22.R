@@ -34,7 +34,7 @@ set.seed(2018)
 ################################################
   
 
-  
+  getwd()
   
 #variables has_male_name y has_female_name
   dataset$has_male_name <- ifelse(apply(dataset[,"name"], 1, function(u) any(pmatch( unlist(male.names), u), na.rm=TRUE) ), 1, 0)
@@ -164,7 +164,6 @@ set.seed(2018)
   model_list_big <- caretList(
     gender~., trainData,
     trControl=fitControl,
-    preProc = c("center", "scale"),
     methodList=list( "xgbLinear", "xgbTree", "lda", "LogitBoost", "regLogistic"),
     tuneList=list(
       J48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid))
