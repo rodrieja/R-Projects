@@ -14,6 +14,7 @@ set.seed(2018)
   )
   gender <-read_excel("gender.xlsx", col_types=types)
 
+  
 #listas de nombres por genero
   male.names <- read.csv("male.txt", sep="\n")
   female.names <- read.csv("female.txt", sep="\n")
@@ -43,7 +44,7 @@ set.seed(2018)
   
   # armo la matrix df idf
   
-  tokens <- tokens(	dataset.cleaned$text, what = "word",
+  tokens <- tokens(	paste(dataset.cleaned$text, dataset.cleaned$description), what = "word",
                           remove_numbers = T, remove_punct = T,
                           remove_symbols = TRUE, remove_hyphens = T)
   tokens <- tokens_tolower(tokens)
@@ -67,6 +68,8 @@ set.seed(2018)
   names(df) <- make.names(names(df))
   
   df <- subset(df, select = -c(document))
+  
+  
   
 # remover temporalmente los fields donde vamos a hacer text mining
   dataset.cleaned <- subset(dataset.cleaned, select = -c(name, description, text))
@@ -104,14 +107,9 @@ set.seed(2018)
   dataset.cleaned$has_male_name <- as.logical(dataset.cleaned$has_male_name)
   dataset.cleaned$has_female_name <- as.logical(dataset.cleaned$has_female_name)
 
-#cambiar la descripcion para los que tienen na, poner un string con un -1
-  #dataset.cleaned$description[which(is.na(dataset.cleaned$description))] <- "-1"
-
-
-
 
 # resumen del dataset 
-  skimmed <- skim_to_wide(dataset.cleaned)
+  #skimmed <- skim_to_wide(dataset.cleaned)
 
   
 # Split en 500 de competencia
@@ -143,8 +141,8 @@ set.seed(2018)
  ################################################
   
  # objeto de control de training
-  fitControl <- trainControl(method = 'cv',                   # k-fold cross validation
-                             number = 10,                      # number of folds
+  fitControl <- trainControl(method = 'repeatedcv',                   # k-fold cross validation
+                             number = 15,                      # number of folds
                              savePredictions = 'final',       # saves predictions for optimal tuning parameter
                              classProbs = T,                  # should class probabilities be returned
                              #summaryFunction=twoClassSummary  # results summary function
@@ -153,47 +151,48 @@ set.seed(2018)
                              trim=T,
                              returnData = F,
                              allowParallel =T,
-                             index = createFolds(trainData$gender, 10)
+                             repeats=3,
+                             index = createFolds(trainData$gender, 15)
   )
 
 # especifico los modelos y los parametros a tunear
 
   J48_params_grid <- expand.grid(C = seq(0.05, 0.30, 0.05), M = seq(2, 10, 2))
 
-  
   model_list_big <- caretList(
     gender~., trainData,
     trControl=fitControl,
     #methodList=list( "xgbLinear", "xgbTree", "lda", "LogitBoost", "regLogistic"),
-    methodList=list( "lda", "LogitBoost", "rf", "C5.0Tree","gbm"),
-    tuneLength=10,
-    tuneList=list(
-      J48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid))
+    methodList=list(  "LogitBoost", "rf", "C5.0Tree","gbm"),
+    tuneLength=10
+    #tuneList=list(
+    #J48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid))
       #nb=caretModelSpec(method="naive_bayes", preProcess="conditionalX", tuneGrid=data.frame(nb_params_grid)),
       #kn=caretModelSpec(method="knn", tuneGrid=data.frame(knn_params_grid))
-      )
+    #  )
   )
   
 
-  saveRDS(model_list_big, "./final_model3.rds")
-  
-#  model_list_big <- readRDS("./final_model2.rds")
+
+  #saveRDS(model_list_big, "./final_model.rds")
+
+  #model_list_big <- readRDS("./final_model.rds")
   
 
   
 # pruebo los modelos en el dataset de TRAIN
-  train_pred.1 <- predict(model_list_big$lda, trainData, type="prob")
+  #train_pred.1 <- predict(model_list_big$lda, trainData, type="prob")
   train_pred.2 <- predict(model_list_big$LogitBoost, trainData, type="prob")
-  train_pred.3 <- predict(model_list_big$J48, trainData, type="prob")
+  #train_pred.3 <- predict(model_list_big$J48, trainData, type="prob")
   train_pred.4 <- predict(model_list_big$rf, trainData, type="prob")
   train_pred.5 <- predict(model_list_big$C5.0Tree, trainData, type="prob")
   train_pred.6 <- predict(model_list_big$gbm, trainData, type="prob")
 
   
 # para el ensameble, usamos promedio de las probabilidades de los modelos
-  train_avg_probs <- cbind.data.frame( brand = (train_pred.1$brand + train_pred.2$brand + train_pred.3$brand + train_pred.4$brand + train_pred.5$brand + train_pred.6$brand)/6,
-                                       female = (train_pred.1$female + train_pred.2$female + train_pred.3$female + train_pred.4$female + train_pred.5$female + train_pred.6$female)/6,
-                                       male = (train_pred.1$male + train_pred.2$male + train_pred.3$male + train_pred.4$male + train_pred.5$male + train_pred.6$male)/6,
+  train_avg_probs <- cbind.data.frame( brand = ( train_pred.2$brand + train_pred.4$brand + train_pred.5$brand + train_pred.6$brand)/4,
+                                       female = ( train_pred.2$female +  train_pred.4$female + train_pred.5$female + train_pred.6$female)/4,
+                                       male = ( train_pred.2$male +  train_pred.4$male + train_pred.5$male + train_pred.6$male)/4,
                                        target= trainData$gender )
   
   
@@ -204,19 +203,19 @@ set.seed(2018)
   
 # pruebo los modelos en el dataset de TEST
 
-  
-  test_pred.1 <- predict(model_list_big$lda, testData, type="prob")
+ 
+  #test_pred.1 <- predict(model_list_big$lda, testData, type="prob")
   test_pred.2 <- predict(model_list_big$LogitBoost, testData, type="prob")
-  test_pred.3 <- predict(model_list_big$J48, testData, type="prob")
+  #test_pred.3 <- predict(model_list_big$J48, testData, type="prob")
   test_pred.4 <- predict(model_list_big$rf, testData, type="prob")
   test_pred.5 <- predict(model_list_big$C5.0Tree, testData, type="prob")
   test_pred.6 <- predict(model_list_big$gbm, testData, type="prob")
 
   
 # para el ensameble, usamos promedio de las probabilidades de los modelos
-  test_avg_probs <- cbind.data.frame( brand = (test_pred.1$brand + test_pred.2$brand + test_pred.3$brand + test_pred.4$brand + test_pred.5$brand + test_pred.6$brand)/6,
-                                       female = (test_pred.1$female + test_pred.2$female + test_pred.3$female + test_pred.4$female + test_pred.5$female + test_pred.6$female)/6,
-                                       male = (test_pred.1$male + test_pred.2$male + test_pred.3$male + test_pred.4$male + test_pred.5$male + test_pred.6$male)/6,
+  test_avg_probs <- cbind.data.frame( brand = ( test_pred.2$brand +  test_pred.4$brand + test_pred.5$brand + test_pred.6$brand)/4,
+                                       female = ( test_pred.2$female +  test_pred.4$female + test_pred.5$female + test_pred.6$female)/4,
+                                       male = ( test_pred.2$male + test_pred.4$male + test_pred.5$male + test_pred.6$male)/4,
                                        target= testData$gender )
   
 #armo un data frame con las probabilidades medias y el target
@@ -250,20 +249,32 @@ set.seed(2018)
 
 # pruebo los modelos en el dataset de COMPETICION
 
-  comp_pred.1 <- predict(model_list_big$lda, compData, type="prob")
+  #comp_pred.1 <- predict(model_list_big$lda, compData, type="prob")
   comp_pred.2 <- predict(model_list_big$LogitBoost, compData, type="prob")
-  comp_pred.3 <- predict(model_list_big$J48, compData, type="prob")
+  #comp_pred.3 <- predict(model_list_big$J48, compData, type="prob")
   comp_pred.4 <- predict(model_list_big$rf, compData, type="prob")
   comp_pred.5 <- predict(model_list_big$C5.0Tree, compData, type="prob")
   comp_pred.6 <- predict(model_list_big$gbm, compData, type="prob")
   
   
-  comp_avg_probs <- cbind.data.frame( brand = (comp_pred.1$brand + comp_pred.2$brand + comp_pred.3$brand + comp_pred.4$brand + comp_pred.5$brand + comp_pred.4$brand)/6,
-                                      female = (comp_pred.1$female + comp_pred.2$female + comp_pred.3$female + comp_pred.4$female + comp_pred.5$female + comp_pred.4$female)/6,
-                                      male = (comp_pred.1$male + comp_pred.2$male + comp_pred.3$male + comp_pred.4$male + comp_pred.5$male + comp_pred.4$male)/6,
+  comp_avg_probs <- cbind.data.frame( brand = ( comp_pred.2$brand +  comp_pred.4$brand + comp_pred.5$brand + comp_pred.4$brand)/4,
+                                      female = ( comp_pred.2$female +  comp_pred.4$female + comp_pred.5$female + comp_pred.4$female)/4,
+                                      male = ( comp_pred.2$male +  comp_pred.4$male + comp_pred.5$male + comp_pred.4$male)/4,
                                       target= compData$gender )
   comp_results <- cbind.data.frame(new_prediction=names(comp_avg_probs)[max.col(comp_avg_probs[,1:3])], compData$gender) # devuelve clases
   
   #RESULTADO FINAL COMPETICION 
   caret::confusionMatrix(reference = compData$gender, data = comp_results$new_prediction)
+  
+  
+  #ggplot(model_list_big$J48)
+  #ggsave("J48.png", dpi=400, height=6, width=12)
+  #ggsave()  #ggplot(model_list_big$lda)
+  ggplot(model_list_big$LogitBoost)
+  ggsave("LogitBoost.png", dpi=400, height=6, width=12)
+  ggplot(model_list_big$rf)
+  ggsave("rf.png", dpi=400, height=6, width=12)
+  #ggplot(model_list_big$C5.0Tree)
+  ggplot(model_list_big$gbm)
+  ggsave("gbm.png", dpi=400, height=6, width=12)
   
