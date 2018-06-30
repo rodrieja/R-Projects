@@ -141,8 +141,8 @@ set.seed(2018)
  ################################################
   
  # objeto de control de training
-  fitControl <- trainControl(method = 'repeatedcv',                   # k-fold cross validation
-                             number = 15,                      # number of folds
+  fitControl <- trainControl(method = 'cv',                   # k-fold cross validation
+                             number = 5,                      # number of folds
                              savePredictions = 'final',       # saves predictions for optimal tuning parameter
                              classProbs = T,                  # should class probabilities be returned
                              #summaryFunction=twoClassSummary  # results summary function
@@ -151,48 +151,119 @@ set.seed(2018)
                              trim=T,
                              returnData = F,
                              allowParallel =T,
-                             repeats=3,
-                             index = createFolds(trainData$gender, 15)
+                             
+                             index = createFolds(trainData$gender, 5)
   )
 
 # especifico los modelos y los parametros a tunear
 
-  J48_params_grid <- expand.grid(C = seq(0.05, 0.30, 0.05), M = seq(2, 10, 2))
-
+  #J48_params_grid <- expand.grid(C = seq(0.05, 0.30, 0.05), M = seq(2, 10, 2))
+  regLogistic_params <- expand.grid(cost = seq(0.25,4,0.5), loss="L1", epsilon = 1e-03 )
+  
   model_list_big <- caretList(
     gender~., trainData,
     trControl=fitControl,
     #methodList=list( "xgbLinear", "xgbTree", "lda", "LogitBoost", "regLogistic"),
-    methodList=list(  "LogitBoost", "rf", "C5.0Tree","gbm"),
-    tuneLength=10
-    #tuneList=list(
-    #J48=caretModelSpec(method="J48", tuneGrid=data.frame(J48_params_grid))
+    #methodList=list(  "LogitBoost", "rf", "C5.0Tree","gbm"),
+    #methodList=list(  "LogitBoost", "rf","gbm"),
+    methodList=list(   "LogitBoost", "gbm"),
+    tuneLength=5,
+    tuneList=list(
+    regLogistic=caretModelSpec(method="regLogistic", tuneGrid=data.frame(regLogistic_params))
       #nb=caretModelSpec(method="naive_bayes", preProcess="conditionalX", tuneGrid=data.frame(nb_params_grid)),
       #kn=caretModelSpec(method="knn", tuneGrid=data.frame(knn_params_grid))
-    #  )
+      )
   )
   
 
-
-  #saveRDS(model_list_big, "./final_model.rds")
+  saveRDS(model_list_big, "./final_model_5cv.rds")
 
   #model_list_big <- readRDS("./final_model.rds")
   
 
   
-# pruebo los modelos en el dataset de TRAIN
-  #train_pred.1 <- predict(model_list_big$lda, trainData, type="prob")
-  train_pred.2 <- predict(model_list_big$LogitBoost, trainData, type="prob")
+# pruebo los modelos en el dataset de TEST
+  
+  test_pred.1 <- predict(model_list_big$regLogistic, testData, type="raw")
+  test_pred.2 <- predict(model_list_big$LogitBoost, testData, type="raw")
+  test_pred.3 <- predict(model_list_big$gbm, testData, type="raw")
+
+  ## ROC MODELO 1
+  
+  mod1_brand_vs_all <- cbind.data.frame(response = ifelse(test_pred.1 == "brand","brand",  "other"),
+                                      target = ifelse(testData$gender == "brand",1,  0))
+  mod1_female_vs_all <- cbind.data.frame(response= ifelse(test_pred.1 == "female","female",  "other"),
+                                       target =  ifelse(testData$gender == "female",1,  0))
+  mod1_male_vs_all <- cbind.data.frame(response = ifelse(  test_pred.1 == "male","male",  "other"),
+                                     target = ifelse(testData$gender == "male",1,  0))
+  
+  mod1_roc_brand <- roc(mod1_brand_vs_all$response, mod1_brand_vs_all$target)
+  mod1_roc_female <- roc(mod1_female_vs_all$response, mod1_female_vs_all$target)
+  mod1_roc_male <- roc(mod1_male_vs_all$response, mod1_male_vs_all$target)
+  
+  ggroc(list(brand=mod1_roc_brand, female=mod1_roc_female, male=mod1_roc_male), size = 1)  
+  auc(mod1_roc_brand)
+  auc(mod1_roc_female)
+  auc(mod1_roc_male)
+  
+  
+  ## ROC MODELO 2
+  mod2_brand_vs_all <- cbind.data.frame(response = ifelse(test_pred.2 == "brand","brand",  "other"),
+                                        target = ifelse(testData$gender == "brand",1,  0))
+  mod2_female_vs_all <- cbind.data.frame(response= ifelse(test_pred.2 == "female","female",  "other"),
+                                         target =  ifelse(testData$gender == "female",1,  0))
+  mod2_male_vs_all <- cbind.data.frame(response = ifelse(  test_pred.2 == "male","male",  "other"),
+                                       target = ifelse(testData$gender == "male",1,  0))
+  
+  
+  mod2_roc_brand <- roc(mod2_brand_vs_all$response, mod2_brand_vs_all$target)
+  mod2_roc_female <- roc(mod2_female_vs_all$response, mod2_female_vs_all$target)
+  mod2_roc_male <- roc(mod2_male_vs_all$response, mod2_male_vs_all$target)
+  
+  ggroc(list(brand=mod2_roc_brand, female=mod2_roc_female, male=mod2_roc_male), size = 1)  
+  auc(mod2_roc_brand)
+  auc(mod2_roc_female)
+  auc(mod2_roc_male)
+  
+
+  
+  ## ROC MODELO 3
+  
+  mod3_brand_vs_all <- cbind.data.frame(response = ifelse(test_pred.3 == "brand","brand",  "other"),
+                                        target = ifelse(testData$gender == "brand",1,  0))
+  mod3_female_vs_all <- cbind.data.frame(response= ifelse(test_pred.3 == "female","female",  "other"),
+                                         target =  ifelse(testData$gender == "female",1,  0))
+  mod3_male_vs_all <- cbind.data.frame(response = ifelse(  test_pred.3 == "male","male",  "other"),
+                                       target = ifelse(testData$gender == "male",1,  0))
+  
+  
+  mod3_roc_brand <- roc(mod3_brand_vs_all$response, mod3_brand_vs_all$target)
+  mod3_roc_female <- roc(mod3_female_vs_all$response, mod3_female_vs_all$target)
+  mod3_roc_male <- roc(mod3_male_vs_all$response, mod3_male_vs_all$target)
+  
+  
+  ggroc(list(brand=mod3_roc_brand, female=mod3_roc_female, male=mod3_roc_male), size = 1)  
+  auc(mod3_roc_brand)
+  auc(mod3_roc_female)
+  auc(mod3_roc_male)
+  
+  # ACCURACY modelos en TEST
+  caret::confusionMatrix(reference = testData$gender, data = test_pred.1)
+  caret::confusionMatrix(reference = testData$gender, data = test_pred.2)
+  caret::confusionMatrix(reference = testData$gender, data = test_pred.3)
+  
+  
+  train_pred.1 <- predict(model_list_big$regLogistic, trainData, type="prob")
   #train_pred.3 <- predict(model_list_big$J48, trainData, type="prob")
-  train_pred.4 <- predict(model_list_big$rf, trainData, type="prob")
-  train_pred.5 <- predict(model_list_big$C5.0Tree, trainData, type="prob")
-  train_pred.6 <- predict(model_list_big$gbm, trainData, type="prob")
+  train_pred.2 <- predict(model_list_big$LogitBoost, trainData, type="prob")
+  #train_pred.5 <- predict(model_list_big$C5.0Tree, trainData, type="prob")
+  train_pred.3 <- predict(model_list_big$gbm, trainData, type="prob")
 
   
 # para el ensameble, usamos promedio de las probabilidades de los modelos
-  train_avg_probs <- cbind.data.frame( brand = ( train_pred.2$brand + train_pred.4$brand + train_pred.5$brand + train_pred.6$brand)/4,
-                                       female = ( train_pred.2$female +  train_pred.4$female + train_pred.5$female + train_pred.6$female)/4,
-                                       male = ( train_pred.2$male +  train_pred.4$male + train_pred.5$male + train_pred.6$male)/4,
+  train_avg_probs <- cbind.data.frame( brand = ( train_pred.1$brand + train_pred.2$brand + train_pred.3$brand )/3,
+                                       female = ( train_pred.1$female +  train_pred.2$female + train_pred.3$female )/3,
+                                       male = ( train_pred.1$male +  train_pred.2$male + train_pred.3$male )/3,
                                        target= trainData$gender )
   
   
@@ -201,21 +272,21 @@ set.seed(2018)
   train_results <- cbind.data.frame(new_prediction=names(train_avg_probs)[max.col(train_avg_probs[,1:3])], trainData$gender)
   caret::confusionMatrix(reference = trainData$gender, data = train_results$new_prediction)
   
-# pruebo los modelos en el dataset de TEST
+# pruebo el ensamble en el dataset de TEST
 
  
   #test_pred.1 <- predict(model_list_big$lda, testData, type="prob")
-  test_pred.2 <- predict(model_list_big$LogitBoost, testData, type="prob")
+  test_pred.1 <- predict(model_list_big$LogitBoost, testData, type="prob")
   #test_pred.3 <- predict(model_list_big$J48, testData, type="prob")
-  test_pred.4 <- predict(model_list_big$rf, testData, type="prob")
-  test_pred.5 <- predict(model_list_big$C5.0Tree, testData, type="prob")
-  test_pred.6 <- predict(model_list_big$gbm, testData, type="prob")
+  test_pred.2 <- predict(model_list_big$regLogistic, testData, type="prob")
+  #test_pred.5 <- predict(model_list_big$C5.0Tree, testData, type="prob")
+  test_pred.3 <- predict(model_list_big$gbm, testData, type="prob")
 
   
 # para el ensameble, usamos promedio de las probabilidades de los modelos
-  test_avg_probs <- cbind.data.frame( brand = ( test_pred.2$brand +  test_pred.4$brand + test_pred.5$brand + test_pred.6$brand)/4,
-                                       female = ( test_pred.2$female +  test_pred.4$female + test_pred.5$female + test_pred.6$female)/4,
-                                       male = ( test_pred.2$male + test_pred.4$male + test_pred.5$male + test_pred.6$male)/4,
+  test_avg_probs <- cbind.data.frame( brand = ( test_pred.1$brand +  test_pred.2$brand +  test_pred.3$brand)/3,
+                                       female = ( test_pred.1$female +  test_pred.2$female + test_pred.3$female)/3,
+                                       male = ( test_pred.1$male + test_pred.2$male +  test_pred.3$male)/3,
                                        target= testData$gender )
   
 #armo un data frame con las probabilidades medias y el target
@@ -247,33 +318,33 @@ set.seed(2018)
   
   caret::confusionMatrix(reference = testData$gender, data = test_results$new_prediction)
 
-# pruebo los modelos en el dataset de COMPETICION
+# pruebo el ensamble en el dataset de COMPETICION
 
   #comp_pred.1 <- predict(model_list_big$lda, compData, type="prob")
-  comp_pred.2 <- predict(model_list_big$LogitBoost, compData, type="prob")
+  comp_pred.1 <- predict(model_list_big$LogitBoost, compData, type="prob")
   #comp_pred.3 <- predict(model_list_big$J48, compData, type="prob")
-  comp_pred.4 <- predict(model_list_big$rf, compData, type="prob")
-  comp_pred.5 <- predict(model_list_big$C5.0Tree, compData, type="prob")
-  comp_pred.6 <- predict(model_list_big$gbm, compData, type="prob")
+  comp_pred.2 <- predict(model_list_big$regLogistic, compData, type="prob")
+ # comp_pred.5 <- predict(model_list_big$C5.0Tree, compData, type="prob")
+  comp_pred.3 <- predict(model_list_big$gbm, compData, type="prob")
   
   
-  comp_avg_probs <- cbind.data.frame( brand = ( comp_pred.2$brand +  comp_pred.4$brand + comp_pred.5$brand + comp_pred.4$brand)/4,
-                                      female = ( comp_pred.2$female +  comp_pred.4$female + comp_pred.5$female + comp_pred.4$female)/4,
-                                      male = ( comp_pred.2$male +  comp_pred.4$male + comp_pred.5$male + comp_pred.4$male)/4,
+  comp_avg_probs <- cbind.data.frame( brand = ( comp_pred.1$brand +  comp_pred.2$brand  + comp_pred.3$brand)/3,
+                                      female = ( comp_pred.1$female +  comp_pred.2$female + comp_pred.3$female)/3,
+                                      male = ( comp_pred.1$male +  comp_pred.2$male +  comp_pred.3$male)/3,
                                       target= compData$gender )
   comp_results <- cbind.data.frame(new_prediction=names(comp_avg_probs)[max.col(comp_avg_probs[,1:3])], compData$gender) # devuelve clases
   
   #RESULTADO FINAL COMPETICION 
   caret::confusionMatrix(reference = compData$gender, data = comp_results$new_prediction)
   
-  
+
   #ggplot(model_list_big$J48)
   #ggsave("J48.png", dpi=400, height=6, width=12)
   #ggsave()  #ggplot(model_list_big$lda)
   ggplot(model_list_big$LogitBoost)
   ggsave("LogitBoost.png", dpi=400, height=6, width=12)
-  ggplot(model_list_big$rf)
-  ggsave("rf.png", dpi=400, height=6, width=12)
+  ggplot(model_list_big$regLogistic)
+  ggsave("regLogistic.png", dpi=400, height=6, width=12)
   #ggplot(model_list_big$C5.0Tree)
   ggplot(model_list_big$gbm)
   ggsave("gbm.png", dpi=400, height=6, width=12)
